@@ -1,4 +1,7 @@
-component {
+component accessors=true {
+  property name="reload" default=false;
+  property name="format" default="svg";
+
   variables.jl = new javaloader.javaloader( loadColdFusionClassPath = true, loadPaths = [
     "#request.config.lmPath#/lib/oy-lm-1.4.jar"
   ] );
@@ -8,72 +11,62 @@ component {
   }
 
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  remote void function get( format = "svg" ) {
-    var conf = jl.create( "org.hibernate.cfg.Configuration" ).init();
-    for( var hbmxmlFile in directoryList( request.config.modelPath, true, "path", "*.hbmxml" )) {
-      conf.addXML( reReplace( fileRead( hbmxmlFile ), 'cfc:[^"]+\.', '', 'all' ));
+  remote string function get() {
+    var cachedFile = replace( request.config.outputImage, '.', '-', 'all' ) & "." & getFormat();
+
+    if( !fileExists( cachedFile ) || getReload()) {
+      var conf = jl.create( "org.hibernate.cfg.Configuration" ).init();
+      for( var hbmxmlFile in directoryList( request.config.modelPath, true, "path", "*.hbmxml" )) {
+        conf.addXML( reReplace( fileRead( hbmxmlFile ), '(cfc:[^"]+\.|cfc:)', '', 'all' ));
+      }
+      conf.buildMappings();
+
+      var opt = jl.create( "com.oy.shared.lm.ant.TaskOptions" ).init();
+      opt.caption = "Diagram of ORM";
+
+      return outputAsSVG( graph = jl.create( "com.oy.shared.lm.ext.HBMCtoGRAPH" ).load( opt, conf ));
     }
-    conf.buildMappings();
 
-    var opt = jl.create( "com.oy.shared.lm.ant.TaskOptions" ).init();
-    opt.caption = "Diagram of ORM";
-
-    var graph = jl.create( "com.oy.shared.lm.ext.HBMCtoGRAPH" ).load( opt, conf );
-
-    switch( format ) {
-      case "gif" :
-      case "jpg" :
-        outputAsImage( graph, format );
-        break;
-
-      case "svg" :
-        outputAsSVG( graph );
-        break;
-    }
+    return outputAsSVG( cachedFile = cachedFile );
   }
 
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  private void function outputAsImage( required any graph, string format = "gif" ) {
-    var response = getPageContext().getFusionContext().getResponse();
-        response.setContentType( "image/#format#" );
+  private string function outputAsSVG( any graph, string cachedFile="" ) {
+    if( cachedFile != "" && fileExists( cachedFile )) {
+      return fileRead( cachedFile, "utf-8" );
+    }
 
-    var outputStream = response.getOutputStream();
-
-    var GRAPHtoDOTtoGIF = jl.create( "com.oy.shared.lm.out.GRAPHtoDOTtoGIF" );
-        GRAPHtoDOTtoGIF.transform( graph, "output.dot", request.config.outputImage, "#request.config.lmPath#/bin/graphviz-2.4/bin/dot.exe" );
-
-    var byteArrayInputStream = createObject( "java", "java.io.ByteArrayInputStream" ).init( fileReadBinary( request.config.outputImage ));
-
-    var imageIO = createObject( "java", "javax.imageio.ImageIO" );
-        imageIO.write( imageIO.read( byteArrayInputStream ), format, outputStream );
-
-    removeFile( request.config.outputImage );
-  }
-
-  // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  private void function outputAsSVG( required any graph ) {
-    var context = getPageContext();
-        // context.setFlushOutput( false );
-
-    var response = context.getFusionContext().getResponse();
-        // response.resetBuffer();
-        // response.setContentType( "image/svg+xml" );
-
-    var dotFile = replace( request.config.outputImage, '.', '-', 'all' ) & ".dot";
     var svgFile = replace( request.config.outputImage, '.', '-', 'all' ) & ".svg";
+    var dotFile = replace( request.config.outputImage, '.', '-', 'all' ) & ".dot";
     var FileOutputStream = createObject( "java", "java.io.FileOutputStream" ).init( dotFile );
-
     var GRAPHtoDOT = jl.create( "com.oy.shared.lm.out.GRAPHtoDOT" );
-        GRAPHtoDOT.transform( graph, FileOutputStream );
+
+    GRAPHtoDOT.transform( graph, FileOutputStream );
+
+    FileOutputStream.close();
 
     lock scope="server" timeout="10" {
-      cfexecute( name="#request.config.lmPath#/bin/graphviz-2.4/bin/dot.exe", arguments="-Tsvg #dotFile# -o #svgFile#" );
+      var Runtime = createObject("java", "java.lang.Runtime").getRuntime();
+
+      Runtime.exec( "#request.config.lmPath#/bin/graphviz-2.4/bin/dot.exe -Tsvg #dotFile# -o #svgFile#" );
+      Runtime.gc();
+
       removeFile( dotFile );
     }
 
-    location( getFileFromPath( svgFile ));
+    var svgContent = fileRead( svgFile, "utf-8" );
 
-    abort;
+    svgContent = mid( svgContent, findNoCase( '<svg', svgContent ), len( svgContent ));
+    svgContent = reReplaceNoCase( svgContent, '<a [^>]+>', '', 'all' );
+    svgContent = replaceNoCase( svgContent, '</a>', '', 'all' );
+    svgContent = trim( reReplace( svgContent, "\s{2,}|\n+|<!--(.*?)-->", " ", "all" ));
+    svgContent = reReplaceNoCase( svgContent, '>\s+<', '><', 'all' );
+    svgContent = reReplaceNoCase( svgContent, '\s?=\s?', '=', 'all' );
+    svgContent = reReplaceNoCase( svgContent, '<title>[^<]+</title>', '', 'all' );
+
+    fileWrite( svgFile, svgContent, "utf-8" );
+
+    return fileRead( svgFile, "utf-8" );;
   }
 
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
