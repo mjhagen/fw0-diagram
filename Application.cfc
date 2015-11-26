@@ -1,10 +1,9 @@
 component extends="framework.zero" {
-  // this.root = getDirectoryFromPath( getBaseTemplatePath()) & "../..";
   this.configFiles = this.root & "/config";
-  this.defaultConfig["title"] = "Database Diagram";
-  this.defaultConfig["outputImage"] = expandPath( "./output.gif" );
-  this.defaultConfig["modelPath"] = expandPath( "model" );
-  this.mappings["/model"] = this.defaultConfig["modelPath"];
+  this.defaultConfig.title = "Database Diagram";
+  this.defaultConfig.outputImage = expandPath( "./output.gif" );
+  this.defaultConfig.paths.model = expandPath( "model" );
+  this.mappings["/model"] = this.defaultConfig.paths.model;
 
   public void function onRequestStart(string targetPage) {
     super.onRequestStart();

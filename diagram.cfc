@@ -3,7 +3,7 @@ component accessors=true {
   property name="format" default="svg";
 
   variables.jl = new javaloader.javaloader( loadColdFusionClassPath = true, loadPaths = [
-    "#request.config.lmPath#/lib/oy-lm-1.4.jar"
+    "#request.config.paths.lm#/lib/oy-lm-1.4.jar"
   ] );
 
   public any function init() {
@@ -16,7 +16,7 @@ component accessors=true {
 
     if( !fileExists( cachedFile ) || getReload()) {
       var conf = jl.create( "org.hibernate.cfg.Configuration" ).init();
-      for( var hbmxmlFile in directoryList( request.config.modelPath, true, "path", "*.hbmxml" )) {
+      for( var hbmxmlFile in directoryList( request.config.paths.model, true, "path", "*.hbmxml" )) {
         conf.addXML( reReplace( fileRead( hbmxmlFile ), '(cfc:[^"]+\.|cfc:)', '', 'all' ));
       }
       conf.buildMappings();
@@ -48,7 +48,7 @@ component accessors=true {
     lock scope="server" timeout="10" {
       var Runtime = createObject("java", "java.lang.Runtime").getRuntime();
 
-      Runtime.exec( "#request.config.lmPath#/bin/graphviz-2.4/bin/dot.exe -Tsvg #dotFile# -o #svgFile#" );
+      Runtime.exec( "#request.config.paths.lm#/bin/graphviz-2.4/bin/dot.exe -Tsvg #dotFile# -o #svgFile#" );
       Runtime.gc();
 
       removeFile( dotFile );
